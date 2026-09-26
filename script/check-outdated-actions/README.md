@@ -42,7 +42,7 @@ npm ci
 npx ts-node ./index.ts
 ```
 
-The script reads `GITHUB_TOKEN`, then `GH_TOKEN`. In GitHub Actions the workflow sets `GITHUB_TOKEN` to `github.token`. Locally, `gh auth token` prints a token that can read public repositories. Unauthenticated requests are limited to 60 per hour. One run asks GitHub once per action repository (about 20), plus another request for each repository that is pinned by a commit SHA with no version comment, plus one request per annotated tag that has to be peeled to a commit. A second unauthenticated run in the same hour can be rejected.
+The script reads `GITHUB_TOKEN`, then `GH_TOKEN`. In GitHub Actions the workflow sets `GITHUB_TOKEN` to `github.token` on the checker step only. `npm ci` does not receive it, because a pull request can change the lifecycle scripts in `package.json` and npm runs those scripts during install. Locally, `gh auth token` prints a token that can read public repositories. Unauthenticated requests are limited to 60 per hour. One run asks GitHub once per action repository (about 20), plus another request for each repository that is pinned by a commit SHA with no version comment, plus one request per annotated tag that has to be peeled to a commit. A second unauthenticated run in the same hour can be rejected.
 
 Each outdated reference is one line:
 

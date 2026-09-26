@@ -4,7 +4,9 @@ import path from "path";
 
 // Major and minor tags move. v5 stays current for every v5.x.y release.
 // v5.2 stays current for every v5.2.y release. A patch tag does not move.
-// The README cites the GitHub release documentation this follows.
+// A commit SHA with no version comment does not move. It is current only when
+// that commit is the highest stable release. The README cites the GitHub
+// release documentation this follows.
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const USES_LINE =
@@ -39,6 +41,7 @@ interface Finding {
 
 interface ReleaseCatalog {
   newest: Version | null;
+  newestCommit: string | null;
   byCommit: Map<string, Version>;
 }
 
@@ -220,6 +223,7 @@ async function catalogFor(repo: string, needCommits: boolean): Promise<ReleaseCa
   }
 
   const byCommit = new Map<string, Version>();
+  let newestCommit: string | null = null;
   if (needCommits && parsedByTag.size > 0) {
     const refs = await listTagRefs(repo);
     for (const ref of refs) {
@@ -234,10 +238,19 @@ async function catalogFor(repo: string, needCommits: boolean): Promise<ReleaseCa
           : ref.object.sha.toLowerCase();
       const existing = byCommit.get(commit);
       byCommit.set(commit, existing ? preferVersion(version, existing) : version);
+      if (newest && version.tag === newest.tag) {
+        newestCommit = commit;
+      }
     }
   }
 
-  return { newest, byCommit };
+  if (needCommits && newest && !newestCommit) {
+    throw new Error(
+      `Could not resolve the commit for actions/${repo} release ${newest.tag}.`
+    );
+  }
+
+  return { newest, newestCommit, byCommit };
 }
 
 async function workflowFiles(dir: string): Promise<string[]> {
@@ -319,14 +332,20 @@ function judge(reference: Reference, catalog: ReleaseCatalog): Finding | null {
       }
       return null;
     }
-    const resolved = catalog.byCommit.get(reference.ref.toLowerCase());
-    if (!resolved) {
-      return finding(reference, `${reference.uses} does not match a stable release. ${newest.tag} is available.`);
+    // Do not call isOutdated here. A release tag of v5 or v5.2 would apply
+    // moving-tag rules and hide a newer release on that same line. The commit
+    // itself is current only when it is the highest stable release.
+    if (catalog.newestCommit && reference.ref.toLowerCase() === catalog.newestCommit) {
+      return null;
     }
-    if (isOutdated(resolved, newest)) {
+    const resolved = catalog.byCommit.get(reference.ref.toLowerCase());
+    if (resolved) {
       return finding(reference, behind(`${reference.uses} (${resolved.tag})`, newest));
     }
-    return null;
+    return finding(
+      reference,
+      `${reference.uses} does not match the highest stable release. ${newest.tag} is available.`
+    );
   }
 
   const pinned = parseVersion(reference.ref);
